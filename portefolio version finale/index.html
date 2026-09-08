@@ -1,0 +1,1220 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Portfolio - Terminal Hacker</title>
+
+  <!-- Tailwind CSS via CDN (for utility classes) -->
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+
+  <style>
+    /* ====== VARIABLES & GLOBALS ====== */
+    :root {
+      --bg-main: #020b05;
+      --bg-panel: rgba(0, 0, 0, 0.8);
+      --neon-green: #00ff7f;
+      --neon-green-soft: #00c96b;
+      --neon-red: #ff0055;
+      --text-main: #b6f2c4;
+      --scanline-color: rgba(0, 255, 127, 0.08);
+      --border-glow: 0 0 8px rgba(0, 255, 127, 0.5);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      min-height: 100vh;
+      font-family: "Fira Code", "Cascadia Code", Menlo, Monaco, Consolas,
+        "Liberation Mono", "Courier New", monospace;
+      background: radial-gradient(circle at top, #052412 0, #000 50%, #000 100%);
+      color: var(--text-main);
+      overflow-x: hidden;
+    }
+
+    /* Subtle moving background matrix-like pattern */
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      background-image: linear-gradient(
+          rgba(0, 255, 127, 0.12) 1px,
+          transparent 1px
+        ),
+        linear-gradient(90deg, rgba(0, 255, 127, 0.12) 1px, transparent 1px);
+      background-size: 100% 2px, 2px 100%;
+      mix-blend-mode: soft-light;
+      opacity: 0.2;
+      pointer-events: none;
+      z-index: -3;
+      animation: bgShift 18s linear infinite;
+    }
+
+    @keyframes bgShift {
+      from {
+        transform: translate3d(0, 0, 0);
+      }
+      to {
+        transform: translate3d(0, -40px, 0);
+      }
+    }
+
+    /* Scanlines overlay */
+    .scanlines::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      background: repeating-linear-gradient(
+        to bottom,
+        var(--scanline-color) 0,
+        var(--scanline-color) 1px,
+        transparent 1px,
+        transparent 3px
+      );
+      mix-blend-mode: soft-light;
+      opacity: 0.35;
+      pointer-events: none;
+      z-index: 30;
+    }
+
+    /* CRT vignette */
+    .scanlines::after {
+      content: "";
+      position: fixed;
+      inset: 0;
+      background: radial-gradient(circle at center, transparent 0, transparent 50%,
+          rgba(0, 0, 0, 0.6) 100%);
+      mix-blend-mode: multiply;
+      pointer-events: none;
+      z-index: 31;
+    }
+
+    /* ====== TERMINAL LAYOUT ====== */
+    .terminal-wrapper {
+      max-width: 1100px;
+      margin: 1.5rem auto;
+      padding: 1rem;
+    }
+
+    .terminal-window {
+      position: relative;
+      border-radius: 0.6rem;
+      background: radial-gradient(circle at top left, #082816 0, #020b05 40%, #000 100%);
+      box-shadow: 0 0 0 1px rgba(0, 255, 127, 0.15), var(--border-glow);
+      overflow: hidden;
+    }
+
+    .terminal-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0.4rem 0.9rem;
+      background: linear-gradient(90deg, #02110a, #062818);
+      border-bottom: 1px solid rgba(0, 255, 127, 0.2);
+      font-size: 0.8rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .traffic-lights {
+      display: flex;
+      gap: 0.4rem;
+      align-items: center;
+    }
+
+    .traffic-dot {
+      width: 0.7rem;
+      height: 0.7rem;
+      border-radius: 999px;
+      box-shadow: 0 0 6px currentColor;
+    }
+
+    .dot-close {
+      color: #ff5f57;
+    }
+
+    .dot-minimize {
+      color: #febc2e;
+    }
+
+    .dot-maximize {
+      color: #28c840;
+    }
+
+    .terminal-title {
+      flex: 1;
+      text-align: center;
+      color: var(--neon-green-soft);
+      opacity: 0.85;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .terminal-body {
+      padding: 1rem 1.1rem 1.2rem;
+      font-size: 0.95rem;
+      line-height: 1.5;
+    }
+
+    /* ====== NAVIGATION / PROMPT-LIKE MENU ====== */
+    .nav-line {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.4rem;
+      margin-bottom: 1rem;
+      font-size: 0.9rem;
+    }
+
+    .nav-label {
+      color: var(--neon-green-soft);
+      margin-right: 0.3rem;
+    }
+
+    .nav-item {
+      position: relative;
+      cursor: pointer;
+      padding: 0 0.25rem;
+      border-radius: 0.25rem;
+      transition: background 0.15s ease, color 0.15s ease, transform 0.1s ease;
+    }
+
+    .nav-item::before {
+      content: "#";
+      margin-right: 0.15rem;
+      opacity: 0.6;
+      color: var(--neon-green-soft);
+    }
+
+    .nav-item:hover {
+      background: rgba(0, 255, 127, 0.1);
+      color: #e5fff0;
+      transform: translateY(-1px);
+    }
+
+    .nav-item.active {
+      background: rgba(0, 255, 127, 0.16);
+      color: var(--neon-green);
+      box-shadow: 0 0 0 1px rgba(0, 255, 127, 0.35);
+    }
+
+    /* ====== CONTENT SECTIONS ====== */
+    .section {
+      display: none;
+      animation: fadeIn 0.2s ease-out;
+    }
+
+    .section.active {
+      display: block;
+    }
+
+    @keyframes fadeIn {
+      from {
+        opacity: 0;
+        transform: translateY(4px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .section-title {
+      color: var(--neon-green);
+      margin-bottom: 0.6rem;
+      font-weight: 600;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      font-size: 0.85rem;
+    }
+
+    .prompt-line {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.35rem;
+      margin-bottom: 0.5rem;
+      align-items: center;
+      font-size: 0.9rem;
+    }
+
+    .prompt-user {
+      color: var(--neon-green);
+    }
+
+    .prompt-path {
+      color: #4cd6a2;
+    }
+
+    .prompt-symbol {
+      color: var(--neon-green);
+      margin-right: 0.25rem;
+    }
+
+    .terminal-text {
+      white-space: pre-wrap;
+      word-wrap: break-word;
+    }
+
+    /* ====== TYPING EFFECT & CARET ====== */
+    .typing {
+      border-right: 2px solid var(--neon-green);
+      white-space: nowrap;
+      overflow: hidden;
+    }
+
+    .caret {
+      display: inline-block;
+      width: 0.6em;
+      background: var(--neon-green);
+      margin-left: 0.15rem;
+      animation: blink 1s steps(2, start) infinite;
+    }
+
+    @keyframes blink {
+      0%,
+      49% {
+        opacity: 1;
+      }
+      50%,
+      100% {
+        opacity: 0;
+      }
+    }
+
+    /* ====== GLITCH EFFECT ====== */
+    .glitch {
+      position: relative;
+      display: inline-block;
+      color: var(--neon-green);
+      text-shadow: 0 0 4px rgba(0, 255, 127, 0.7);
+    }
+
+    .glitch::before,
+    .glitch::after {
+      content: attr(data-text);
+      position: absolute;
+      left: 0;
+      top: 0;
+      width: 100%;
+      overflow: hidden;
+      clip-path: inset(0 0 0 0);
+      opacity: 0.8;
+    }
+
+    .glitch::before {
+      color: #00fff2;
+      transform: translate(1px, -1px);
+      animation: glitchTop 2.4s infinite linear alternate-reverse;
+      mix-blend-mode: screen;
+    }
+
+    .glitch::after {
+      color: var(--neon-red);
+      transform: translate(-1px, 1px);
+      animation: glitchBottom 1.8s infinite linear alternate-reverse;
+      mix-blend-mode: screen;
+    }
+
+    @keyframes glitchTop {
+      0% {
+        clip-path: inset(0 0 80% 0);
+      }
+      20% {
+        clip-path: inset(0 0 40% 0);
+      }
+      40% {
+        clip-path: inset(0 0 60% 0);
+      }
+      60% {
+        clip-path: inset(0 0 30% 0);
+      }
+      80% {
+        clip-path: inset(0 0 50% 0);
+      }
+      100% {
+        clip-path: inset(0 0 80% 0);
+      }
+    }
+
+    @keyframes glitchBottom {
+      0% {
+        clip-path: inset(80% 0 0 0);
+      }
+      20% {
+        clip-path: inset(60% 0 0 0);
+      }
+      40% {
+        clip-path: inset(70% 0 0 0);
+      }
+      60% {
+        clip-path: inset(40% 0 0 0);
+      }
+      80% {
+        clip-path: inset(50% 0 0 0);
+      }
+      100% {
+        clip-path: inset(80% 0 0 0);
+      }
+    }
+
+    /* ====== CARDS / BLOCKS IN SECTIONS ====== */
+    .tag {
+      display: inline-block;
+      border-radius: 999px;
+      border: 1px solid rgba(0, 255, 127, 0.35);
+      padding: 0.1rem 0.6rem;
+      font-size: 0.7rem;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--neon-green-soft);
+      margin-right: 0.3rem;
+    }
+
+    .grid-two {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 0.9rem;
+    }
+
+    .grid-three {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 0.9rem;
+    }
+
+    .panel {
+      border-radius: 0.4rem;
+      border: 1px solid rgba(0, 255, 127, 0.18);
+      background: linear-gradient(135deg, rgba(0, 0, 0, 0.8), rgba(3, 26, 14, 0.9));
+      padding: 0.6rem 0.7rem;
+      box-shadow: 0 0 14px rgba(0, 0, 0, 0.75);
+      font-size: 0.9rem;
+    }
+
+    .panel-title {
+      font-weight: 600;
+      margin-bottom: 0.35rem;
+      color: var(--neon-green);
+      font-size: 0.8rem;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+
+    .bullet-list {
+      list-style: none;
+      padding-left: 0;
+    }
+
+    .bullet-list li::before {
+      content: "➜";
+      color: var(--neon-green);
+      margin-right: 0.4rem;
+    }
+
+    .bullet-list li {
+      margin-bottom: 0.15rem;
+    }
+
+    .skill-bar {
+      margin-bottom: 0.6rem;
+    }
+
+    .skill-name {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 0.25rem;
+      font-size: 0.8rem;
+    }
+
+    .skill-label {
+      color: var(--neon-green-soft);
+      font-weight: 600;
+    }
+
+    .skill-percent {
+      color: #4cd6a2;
+      opacity: 0.8;
+    }
+
+    .skill-track {
+      background: rgba(0, 0, 0, 0.5);
+      height: 0.4rem;
+      border-radius: 999px;
+      border: 1px solid rgba(0, 255, 127, 0.15);
+      overflow: hidden;
+    }
+
+    .skill-fill {
+      background: linear-gradient(90deg, var(--neon-green), #00fff2);
+      height: 100%;
+      border-radius: 999px;
+      transition: width 0.8s ease;
+    }
+
+    .cert-badge {
+      text-align: center;
+      padding: 0.5rem;
+      border-radius: 0.4rem;
+      border: 1px solid rgba(0, 255, 127, 0.25);
+      background: linear-gradient(135deg, rgba(0, 0, 0, 0.6), rgba(3, 26, 14, 0.8));
+    }
+
+    .cert-icon {
+      font-size: 2rem;
+      margin-bottom: 0.3rem;
+    }
+
+    .cert-name {
+      font-size: 0.75rem;
+      color: var(--neon-green-soft);
+      font-weight: 600;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+
+    /* ====== PROJECTS PLACEHOLDER ====== */
+    .placeholder {
+      font-style: italic;
+      opacity: 0.7;
+    }
+
+    /* ====== CONTACT FORM ====== */
+    .form-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 0.75rem;
+    }
+
+    .form-control {
+      display: flex;
+      flex-direction: column;
+      gap: 0.15rem;
+      font-size: 0.85rem;
+    }
+
+    .form-control label {
+      color: var(--neon-green-soft);
+    }
+
+    .input,
+    .textarea {
+      background: rgba(0, 0, 0, 0.75);
+      border-radius: 0.25rem;
+      border: 1px solid rgba(0, 255, 127, 0.25);
+      padding: 0.35rem 0.45rem;
+      color: var(--text-main);
+      outline: none;
+      font-family: inherit;
+      font-size: 0.9rem;
+      transition: border 0.12s ease, box-shadow 0.12s ease, background 0.12s ease;
+    }
+
+    .input:focus,
+    .textarea:focus {
+      border-color: var(--neon-green);
+      box-shadow: 0 0 0 1px rgba(0, 255, 127, 0.45);
+      background: rgba(3, 26, 14, 0.9);
+    }
+
+    .textarea {
+      resize: vertical;
+      min-height: 130px;
+    }
+
+    .btn-primary {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      border-radius: 0.3rem;
+      padding: 0.3rem 0.8rem;
+      background: rgba(0, 0, 0, 0.7);
+      color: var(--neon-green);
+      border: 1px solid rgba(0, 255, 127, 0.4);
+      font-size: 0.85rem;
+      cursor: pointer;
+      margin-top: 0.4rem;
+      transition: background 0.15s ease, transform 0.1s ease, box-shadow 0.15s ease;
+    }
+
+    .btn-primary:hover {
+      background: rgba(3, 26, 14, 0.95);
+      transform: translateY(-1px);
+      box-shadow: 0 0 10px rgba(0, 255, 127, 0.6);
+    }
+
+    .btn-primary:active {
+      transform: translateY(0);
+      box-shadow: none;
+    }
+
+    .status-line {
+      margin-top: 0.3rem;
+      font-size: 0.8rem;
+    }
+
+    .status-ok {
+      color: var(--neon-green);
+    }
+
+    .status-error {
+      color: var(--neon-red);
+    }
+
+    /* ====== RESPONSIVE ====== */
+    @media (max-width: 768px) {
+      .terminal-wrapper {
+        padding: 0.6rem;
+        margin: 0.5rem auto 1.5rem;
+      }
+
+      .terminal-body {
+        padding: 0.8rem 0.7rem 0.9rem;
+      }
+
+      .grid-two {
+        grid-template-columns: minmax(0, 1fr);
+      }
+
+      .grid-three {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .form-grid {
+        grid-template-columns: minmax(0, 1fr);
+      }
+
+      .terminal-header {
+        font-size: 0.7rem;
+      }
+    }
+
+    @media (max-width: 480px) {
+      .nav-line {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+
+      .grid-three {
+        grid-template-columns: minmax(0, 1fr);
+      }
+    }
+  </style>
+</head>
+
+<body class="scanlines">
+  <div class="terminal-wrapper">
+    <div class="terminal-window">
+      <!-- ===== HEADER / TOP BAR ===== -->
+      <div class="terminal-header">
+        <div class="traffic-lights">
+          <span class="traffic-dot dot-close"></span>
+          <span class="traffic-dot dot-minimize"></span>
+          <span class="traffic-dot dot-maximize"></span>
+        </div>
+        <div class="terminal-title">
+          ~/portfolio/bts-sio-sisr — secure_shell — nano
+        </div>
+        <div class="text-[0.7rem] text-[var(--neon-green-soft)] opacity-80 hidden sm:block">
+          ENC: AES-256 | STATUS: <span class="text-[var(--neon-green)]">ONLINE</span>
+        </div>
+      </div>
+
+      <!-- ===== BODY ===== -->
+      <div class="terminal-body">
+        <!-- Navigation styled like a command line -->
+        <div class="nav-line">
+          <span class="nav-label">$ ./portfolio</span>
+          <span class="nav-item active" data-section="accueil">home</span>
+          <span class="nav-item" data-section="bts">bts_sio</span>
+          <span class="nav-item" data-section="sisr">specialite_sisr</span>
+          <span class="nav-item" data-section="certifications">certifications</span>
+          <span class="nav-item" data-section="competences">competences</span>
+          <span class="nav-item" data-section="projets">projets</span>
+          <span class="nav-item" data-section="contact">contact</span>
+        </div>
+
+        <!-- ===== SECTION: ACCUEIL ===== -->
+        <section id="section-accueil" class="section active">
+          <div class="prompt-line">
+            <span class="prompt-user">dimitriclerc4@gmail.com</span>
+            <span class="prompt-path">~/</span>
+            <span class="prompt-symbol">$</span>
+            <span>whoami</span>
+          </div>
+
+          <div class="mb-3">
+            <h1 class="glitch text-2xl md:text-3xl font-semibold" data-text="CLERC Dimitri & Étudiant BTS SIO SISR">
+              CLERC Dimitri & Étudiant BTS SIO SISR
+            </h1>
+          </div>
+
+          <!-- Typing intro -->
+          <div class="terminal-text mb-4">
+            <span id="typing-intro" class="typing"></span>
+            <span class="caret"></span>
+          </div>
+
+          <div class="grid-two">
+            <div class="panel">
+              <div class="panel-title">Profil</div>
+              <p>
+                Passionné par l'administration systèmes, la cybersécurité et les réseaux,
+                j'explore le monde de l'infrastructure IT comme un laboratoire permanent :
+                expérimentations, projets, tests et veille technologique.
+              </p>
+            </div>
+
+            <div class="panel">
+              <div class="panel-title">Stack actuelle</div>
+              <ul class="bullet-list">
+                <li>Linux / Administration systèmes</li>
+                <li>Réseaux & infrastructure IT</li>
+                <li>Sécurité informatique & déploiement</li>
+                <li>Virtualisation & Cloud</li>
+              </ul>
+            </div>
+          </div>
+        </section>
+
+        <!-- ===== SECTION: PRÉSENTATION BTS SIO ===== -->
+        <section id="section-bts" class="section">
+          <div class="prompt-line">
+            <span class="prompt-user">visitor@portfolio</span>
+            <span class="prompt-path">~/bts_sio</span>
+            <span class="prompt-symbol">$</span>
+            <span>cat presentation.txt</span>
+          </div>
+
+          <div class="section-title">Présentation du BTS SIO</div>
+
+          <div class="terminal-text mb-3">
+            Avant de commencer à parler de moi, je vous propose de présenter en premier lieu ma filière dont je suis affecté.
+            
+            Le Brevet de Technicien Supérieur aux Services Informatiques aux Organisations (BTS SIO), s'adresse à ceux qui souhaitent se former en deux ans aux métiers d'administrateur réseau ou de développeur. Pour par la suite intégrer directement le marché du travail ou continuer des études dans le domaine de l'informatique.
+            
+            Le BTS SIO propose deux spécialités :
+          </div>
+
+          <div class="grid-two mb-3">
+            <div class="panel">
+              <div class="panel-title">Option SISR</div>
+              <p class="mb-2">
+                L'option Solution d'infrastructure, systèmes et réseaux forme des
+                professionnels des réseaux et équipements informatiques
+                (installation, maintenance, sécurité).
+              </p>
+              <p class="mb-1 text-[0.8rem] uppercase tracking-[0.1em] text-[var(--neon-green-soft)]">
+                Métiers possibles :
+              </p>
+              <ul class="bullet-list">
+                <li>Administrateur systèmes et réseaux</li>
+                <li>Informaticien support et déploiement</li>
+                <li>Pilote d'exploitation</li>
+                <li>Support systèmes et réseaux</li>
+                <li>Technicien d'infrastructure</li>
+                <li>Technicien de production</li>
+                <li>Technicien micro et réseaux</li>
+              </ul>
+            </div>
+
+            <div class="panel">
+              <div class="panel-title">Option SLAM</div>
+              <p class="mb-2">
+                L'option Solutions logicielles et applications métiers forme des
+                spécialistes des logiciels (rédaction d'un cahier des charges,
+                formulation des besoins et spécifications, développement,
+                intégration au sein de la société).
+              </p>
+              <p class="mb-1 text-[0.8rem] uppercase tracking-[0.1em] text-[var(--neon-green-soft)]">
+                Métiers possibles :
+              </p>
+              <ul class="bullet-list">
+                <li>Développeur d'applications informatiques</li>
+                <li>Développeur informatique</li>
+                <li>Analyste d'applications ou d'études</li>
+                <li>Analyste programmeur</li>
+                <li>Programmeur analyste</li>
+                <li>Programmeur d'applications</li>
+                <li>Responsable des services applicatifs</li>
+                <li>Technicien d'études informatiques</li>
+              </ul>
+            </div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-title">Pourquoi ce BTS ?</div>
+            <p>
+              Le BTS SIO est une porte d'entrée idéale vers les métiers du numérique
+              : il combine théorie, pratique, projets et stages en entreprise, tout
+              en laissant le choix entre l'orientation systèmes / réseaux (SISR) et
+              développement (SLAM).
+            </p>
+          </div>
+        </section>
+
+        <!-- ===== SECTION: SPECIALITE SISR ===== -->
+        <section id="section-sisr" class="section">
+          <div class="prompt-line">
+            <span class="prompt-user">visitor@portfolio</span>
+            <span class="prompt-path">~/bts_sio/sisr</span>
+            <span class="prompt-symbol">$</span>
+            <span>ls -la</span>
+          </div>
+
+          <div class="section-title">Ma spécialité : SISR</div>
+
+          <div class="terminal-text mb-3">
+            <span class="tag">SISR</span>
+            <span class="tag">Infrastructure</span>
+            <span class="tag">Systèmes & Réseaux</span>
+          </div>
+
+          <div class="grid-two mb-3">
+            <div class="panel">
+              <div class="panel-title">Ce que j'y apprends</div>
+              <ul class="bullet-list">
+                <li>Administrer et sécuriser les systèmes Linux/Windows</li>
+                <li>Configurer et maintenir une infrastructure réseau</li>
+                <li>Mettre en place des solutions de sécurité informatique</li>
+                <li>Déployer et intégrer des services IT</li>
+                <li>Assurer la continuité et la disponibilité des systèmes</li>
+              </ul>
+            </div>
+
+            <div class="panel">
+              <div class="panel-title">Ce qui me motive</div>
+              <p>
+                Construire des infrastructures robustes, comprendre le fonctionnement
+                des réseaux, sécuriser les systèmes et résoudre les problèmes
+                d'administration systèmes pour garantir la disponibilité des services.
+              </p>
+            </div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-title">Objectifs</div>
+            <ul class="bullet-list">
+              <li>Maîtriser l'administration systèmes Linux et Windows</li>
+              <li>Renforcer mes connaissances en réseau et sécurité</li>
+              <li>Obtenir des certifications reconnues (PIX, ANSSI, CompTIA)</li>
+              <li>Participer à des projets d'infrastructure et de déploiement</li>
+            </ul>
+          </div>
+        </section>
+
+        <!-- ===== SECTION: CERTIFICATIONS ===== -->
+        <section id="section-certifications" class="section">
+          <div class="prompt-line">
+            <span class="prompt-user">visitor@portfolio</span>
+            <span class="prompt-path">~/certifications</span>
+            <span class="prompt-symbol">$</span>
+            <span>ls -la *.cert</span>
+          </div>
+
+          <div class="section-title">Certifications</div>
+
+          <div class="terminal-text mb-3">
+            <span class="tag">PIX</span>
+            <span class="tag">ANSSI</span>
+            <span class="tag">Certification</span>
+          </div>
+
+          <div class="grid-three mb-3">
+            <div class="cert-badge">
+              <div class="cert-icon">🔐</div>
+              <div class="cert-name">PIX</div>
+              <p style="font-size: 0.7rem; color: #4cd6a2; margin-top: 0.25rem;">Compétences numériques</p>
+            </div>
+
+            <div class="cert-badge">
+              <div class="cert-icon">🛡️</div>
+              <div class="cert-name">ANSSI</div>
+              <p style="font-size: 0.7rem; color: #4cd6a2; margin-top: 0.25rem;">Sécurité de l'information</p>
+            </div>
+
+            <div class="cert-badge">
+              <div class="cert-icon">📚</div>
+              <div class="cert-name">En cours</div>
+              <p style="font-size: 0.7rem; color: #4cd6a2; margin-top: 0.25rem;">Autres certifications</p>
+            </div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-title">Certification PIX</div>
+            <p class="mb-2">
+              PIX est le standard national et européen pour évaluer et certifier les compétences numériques.
+              Elle couvre 5 domaines clés : information et données, communication et collaboration, création
+              de contenu, protection et sécurité, et environnement numérique.
+            </p>
+            <p class="text-[0.85rem] text-[#4cd6a2]">
+              Status: En preparation
+            </p>
+          </div>
+
+          <div class="panel mt-2">
+            <div class="panel-title">Certification ANSSI</div>
+            <p class="mb-2">
+              L'ANSSI (Agence Nationale de la Sécurité des Systèmes d'Information) propose une certification
+              en cybersécurité couvrant les aspects techniques et managériaux de la sécurité informatique.
+              Cette certification valide les compétences en protection des systèmes d'information.
+            </p>
+            <p class="text-[0.85rem] text-[#4cd6a2]">
+              Status: En preparation
+            </p>
+          </div>
+        </section>
+
+        <!-- ===== SECTION: COMPETENCES ===== -->
+        <section id="section-competences" class="section">
+          <div class="prompt-line">
+            <span class="prompt-user">visitor@portfolio</span>
+            <span class="prompt-path">~/competences</span>
+            <span class="prompt-symbol">$</span>
+            <span>cat skills.log</span>
+          </div>
+
+          <div class="section-title">Compétences</div>
+
+          <div class="grid-two mb-3">
+            <div class="panel">
+              <div class="panel-title">Langages de programmation</div>
+
+              <div class="skill-bar">
+                <div class="skill-name">
+                  <span class="skill-label">Python</span>
+                  <span class="skill-percent">85%</span>
+                </div>
+                <div class="skill-track">
+                  <div class="skill-fill" style="width: 85%;"></div>
+                </div>
+              </div>
+
+              <div class="skill-bar">
+                <div class="skill-name">
+                  <span class="skill-label">JavaScript</span>
+                  <span class="skill-percent">75%</span>
+                </div>
+                <div class="skill-track">
+                  <div class="skill-fill" style="width: 75%;"></div>
+                </div>
+              </div>
+
+              <div class="skill-bar">
+                <div class="skill-name">
+                  <span class="skill-label">Java</span>
+                  <span class="skill-percent">70%</span>
+                </div>
+                <div class="skill-track">
+                  <div class="skill-fill" style="width: 70%;"></div>
+                </div>
+              </div>
+
+              <div class="skill-bar">
+                <div class="skill-name">
+                  <span class="skill-label">PHP</span>
+                  <span class="skill-percent">65%</span>
+                </div>
+                <div class="skill-track">
+                  <div class="skill-fill" style="width: 65%;"></div>
+                </div>
+              </div>
+
+              <div class="skill-bar">
+                <div class="skill-name">
+                  <span class="skill-label">HTML/CSS</span>
+                  <span class="skill-percent">90%</span>
+                </div>
+                <div class="skill-track">
+                  <div class="skill-fill" style="width: 90%;"></div>
+                </div>
+              </div>
+
+              <div class="skill-bar">
+                <div class="skill-name">
+                  <span class="skill-label">SQL</span>
+                  <span class="skill-percent">80%</span>
+                </div>
+                <div class="skill-track">
+                  <div class="skill-fill" style="width: 80%;"></div>
+                </div>
+              </div>
+
+              <div class="skill-bar">
+                <div class="skill-name">
+                  <span class="skill-label">Bash</span>
+                  <span class="skill-percent">75%</span>
+                </div>
+                <div class="skill-track">
+                  <div class="skill-fill" style="width: 75%;"></div>
+                </div>
+              </div>
+            </div>
+
+            <div class="panel">
+              <div class="panel-title">Réseaux & Systèmes</div>
+
+              <div class="skill-bar">
+                <div class="skill-name">
+                  <span class="skill-label">Linux</span>
+                  <span class="skill-percent">85%</span>
+                </div>
+                <div class="skill-track">
+                  <div class="skill-fill" style="width: 85%;"></div>
+                </div>
+              </div>
+
+              <div class="skill-bar">
+                <div class="skill-name">
+                  <span class="skill-label">Windows Server</span>
+                  <span class="skill-percent">75%</span>
+                </div>
+                <div class="skill-track">
+                  <div class="skill-fill" style="width: 75%;"></div>
+                </div>
+              </div>
+
+              <div class="skill-bar">
+                <div class="skill-name">
+                  <span class="skill-label">TCP/IP & Réseaux</span>
+                  <span class="skill-percent">80%</span>
+                </div>
+                <div class="skill-track">
+                  <div class="skill-fill" style="width: 80%;"></div>
+                </div>
+              </div>
+
+              <div class="skill-bar">
+                <div class="skill-name">
+                  <span class="skill-label">Active Directory</span>
+                  <span class="skill-percent">70%</span>
+                </div>
+                <div class="skill-track">
+                  <div class="skill-fill" style="width: 70%;"></div>
+                </div>
+              </div>
+
+              <div class="skill-bar">
+                <div class="skill-name">
+                  <span class="skill-label">Virtualisation</span>
+                  <span class="skill-percent">75%</span>
+                </div>
+                <div class="skill-track">
+                  <div class="skill-fill" style="width: 75%;"></div>
+                </div>
+              </div>
+
+              <div class="skill-bar">
+                <div class="skill-name">
+                  <span class="skill-label">Cybersécurité</span>
+                  <span class="skill-percent">70%</span>
+                </div>
+                <div class="skill-track">
+                  <div class="skill-fill" style="width: 70%;"></div>
+                </div>
+              </div>
+
+              <div class="skill-bar">
+                <div class="skill-name">
+                  <span class="skill-label">Cloud (AWS/Azure)</span>
+                  <span class="skill-percent">65%</span>
+                </div>
+                <div class="skill-track">
+                  <div class="skill-fill" style="width: 65%;"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-title">Outils & Technologiques</div>
+            <ul class="bullet-list">
+              <li>Git & GitHub pour le versioning</li>
+              <li>Docker pour la conteneurisation</li>
+              <li>Ansible pour l'automatisation</li>
+              <li>Proxmox / VMware pour la virtualisation</li>
+              <li>Apache / Nginx pour les serveurs web</li>
+              <li>Databases : MySQL, PostgreSQL, MongoDB</li>
+              <li>Outils de monitoring : Zabbix, Grafana, Prometheus</li>
+            </ul>
+          </div>
+        </section>
+
+        <!-- ===== SECTION: PROJETS ===== -->
+        <section id="section-projets" class="section">
+          <div class="prompt-line">
+            <span class="prompt-user">visitor@portfolio</span>
+            <span class="prompt-path">~/projets</span>
+            <span class="prompt-symbol">$</span>
+            <span>ls</span>
+          </div>
+
+          <div class="section-title">Projets</div>
+
+          <div class="panel mb-2">
+            <p class="placeholder">
+              Aucun projet détaillé pour le moment.<br />
+              Les futurs projets (applications web, scripts, outils systèmes) apparaîtront
+              ici sous forme de « dossiers » avec description, stack utilisée et
+              captures d'écran.
+            </p>
+          </div>
+
+          <div class="terminal-text text-xs opacity-70">
+            Astuce : tu peux déjà imaginer ici un index de projets :<br />
+            ./projets/01-infrastructure_lab<br />
+            ./projets/02-script_automation<br />
+            ./projets/03-application_web
+          </div>
+        </section>
+
+        <!-- ===== SECTION: CONTACT ===== -->
+        <section id="section-contact" class="section">
+          <div class="prompt-line">
+            <span class="prompt-user">visitor@portfolio</span>
+            <span class="prompt-path">~/contact</span>
+            <span class="prompt-symbol">$</span>
+            <span>nano message.txt</span>
+          </div>
+
+          <div class="section-title">Contact</div>
+
+          <form id="contact-form" class="mb-2" autocomplete="off">
+            <div class="form-grid mb-2">
+              <div class="form-control">
+                <label for="name">Nom / Pseudo</label>
+                <input id="name" name="name" type="text" class="input" placeholder="root" />
+              </div>
+              <div class="form-control">
+                <label for="email">E-mail</label>
+                <input id="email" name="email" type="email" class="input" placeholder="you@example.com" />
+              </div>
+            </div>
+
+            <div class="form-control mb-1">
+              <label for="message">Message</label>
+              <textarea id="message" name="message" class="textarea" placeholder="Écrivez votre requête ici..."></textarea>
+            </div>
+
+            <button type="submit" class="btn-primary">
+              <span>&gt;_</span>
+              <span>envoyer</span>
+            </button>
+
+            <div id="status" class="status-line"></div>
+          </form>
+
+          <div class="terminal-text text-xs opacity-70">
+            Note : ce formulaire est une simulation locale.<br />
+            Dans une vraie version déployée, le message serait envoyé via un
+            script backend (PHP, Node.js, etc.) ou un service externe.
+          </div>
+        </section>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // =====================
+    // Navigation entre sections (simulation de commandes)
+    // =====================
+    const navItems = document.querySelectorAll('.nav-item');
+    const sections = document.querySelectorAll('.section');
+
+    function showSection(key) {
+      sections.forEach((section) => {
+        section.classList.toggle('active', section.id === `section-${key}`);
+      });
+
+      navItems.forEach((item) => {
+        item.classList.toggle('active', item.dataset.section === key);
+      });
+    }
+
+    navItems.forEach((item) => {
+      item.addEventListener('click', () => {
+        const target = item.dataset.section;
+        showSection(target);
+      });
+    });
+
+    // =====================
+    // Effet de saisie (typing) sur le texte d'accueil
+    // =====================
+    const typingTarget = document.getElementById('typing-intro');
+    const typingText =
+      "Bienvenue dans mon portfolio au format terminal. Ici, pas de fioritures :" +
+      "\n- seulement des lignes de commande, du code et des projets.\n" +
+      "- utilisez le menu ci-dessus comme des commandes pour explorer mon univers.";
+
+    let typingIndex = 0;
+
+    function typeChar() {
+      if (!typingTarget) return;
+      if (typingIndex <= typingText.length) {
+        typingTarget.textContent = typingText.slice(0, typingIndex);
+        typingIndex++;
+        const delay = typingText[typingIndex - 1] === '\n' ? 220 : 40;
+        setTimeout(typeChar, delay);
+      }
+    }
+
+    window.addEventListener('load', () => {
+      setTimeout(typeChar, 400);
+    });
+
+    // =====================
+    // Simulation d'envoi de formulaire de contact
+    // =====================
+    const contactForm = document.getElementById('contact-form');
+    const statusLine = document.getElementById('status');
+
+    if (contactForm) {
+      contactForm.addEventListener('submit', (e) => {
+        e.preventDefault();
+
+        const name = contactForm.name.value.trim();
+        const email = contactForm.email.value.trim();
+        const message = contactForm.message.value.trim();
+
+        if (!name || !email || !message) {
+          statusLine.textContent =
+            'Erreur : certains champs sont vides. Merci de compléter le formulaire.';
+          statusLine.className = 'status-line status-error';
+          return;
+        }
+
+        statusLine.textContent = 'Transmission en cours...';
+        statusLine.className = 'status-line';
+
+        setTimeout(() => {
+          statusLine.textContent =
+            `Message enregistré localement. Merci pour votre prise de contact, ${name} !`;
+          statusLine.className = 'status-line status-ok';
+          contactForm.reset();
+        }, 700);
+      });
+    }
+
+    // =====================
+    // Petit effet aléatoire de "clignotement" du titre (glitch soft)
+    // =====================
+    const glitchTitle = document.querySelector('.glitch');
+
+    if (glitchTitle) {
+      setInterval(() => {
+        glitchTitle.style.filter = 'brightness(1.1)';
+        glitchTitle.style.textShadow =
+          '0 0 6px rgba(0,255,127,0.9), 0 0 18px rgba(0,255,127,0.7)';
+        setTimeout(() => {
+          glitchTitle.style.filter = '';
+          glitchTitle.style.textShadow = '';
+        }, 160);
+      }, 5000 + Math.random() * 4000);
+    }
+  </script>
+</body>
+</html>
